@@ -89,7 +89,7 @@ int parse_real(const char *str, double *out) {
     char *end_ptr;
     double res = strtod(str, &end_ptr);
 
-    if (end_ptr == str) return 1;
+    if (end_ptr == str || *end_ptr != '\0') return 1;
     if (errno != 0) return 1;
 
     *out = res;
@@ -100,7 +100,6 @@ int parse_imag(const char *str, complex *out) {
     if (str == NULL || *str == '\0') return 1;
 
     const char *p_str = str; // Crea un secondo puntatore cosi' che potra' essere incrementato
-    out->re = 0.0; // La parte reale è sempre 0
 
     // Salva il segno e salta al carattere successivo se il segno è esplicito
     double sign = 1.0;
@@ -117,19 +116,83 @@ int parse_imag(const char *str, complex *out) {
 
     // Solo "i", ritorna subito con risultato valido.
     if (*p_str == '\0') {
+        out->re = 0.0;
         out->im = 1.0*sign;
         return 0;
     }
 
     double parsed_coeff;
     if(parse_real(p_str, &parsed_coeff)) return 1;
+    out->re = 0.0;
     out->im = parsed_coeff*sign;
 
     return 0;
 }
 
-complex parse_complex(const char *str) {
+// Il numero complesso in input deve essere del formato a+ib (a e b possono essere 0).
+int parse_complex(const char *str, complex *out) {
+    if (str == NULL || *str == '\0') return 1;
 
+    // Prima cosa controlliamo se c'e' una i
+    const char *p_i = strchr(str, 'i');
+    if (p_i == NULL) {
+        out->im = 0.0;
+        return parse_real(str, &out->re);
+    }
+
+    int len = (int)strlen(str);
+    // Valore base di zero, poiche' non è un valore valido
+    // ci permette di verificare il successo della ricerca
+    int split_index = 0;
+
+    for (int i = 1; i < len; i++) {
+        // Controllo se il segno è preceduto da una 'e', così da evitare falsi positivi
+        // causati dalla notazione scientifica.
+        if ((str[i] == '+' || str[i] == '-') && !(str[i-1] == 'e' || str[i-1] == 'E')) {
+            split_index = i;
+        }
+    }
+
+    // Non è stato trovato l'indice del separatore, è un numero immaginario
+    if (split_index == 0)
+        return parse_imag(str, out);
+    // Trovato l'indice del separatore, quindi si procede a separare la stringa in due.
+    else {
+        // Separazione parte reale
+        int re_len = split_index;
+        char *re_str = malloc(re_len + 1);
+        if (!re_str)
+            return 1;
+
+        strncpy(re_str, str, re_len);
+        re_str[re_len] = '\0';
+        
+        // Parte reale al parser
+        double temp_re;
+        if (parse_real(re_str, &temp_re)) {
+            free(re_str);
+            return 1;
+        }
+        free(re_str);
+
+        // Separazione parte immaginaria
+        int im_len = len - split_index;
+        char *im_str = malloc(im_len + 1);
+
+        strncpy(im_str, str + split_index, im_len);
+        im_str[im_len] = '\0';
+
+        // Parte immaginaria al parser
+        if (parse_imag(im_str, out)) {
+            free(im_str);
+            return 1;
+        }
+        free(im_str);
+
+        out->re = temp_re;
+    }
+
+    return 0;
 }
 
 // TODO: Do after completing complex parser
@@ -143,6 +206,13 @@ int read_qbits_init(const char *filename, int *n_qubits, complex **init_state) {
 }
 
 int main(void) {
+    char a[] = "-2e1-i2e2";
+    complex c;
+    if (parse_complex(a, &c)) {
+        printf(":()\n");
+    } else {
+        complex_print(c);
+    }
 
     return 0;
 }
