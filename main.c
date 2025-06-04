@@ -3,6 +3,11 @@
 #include <errno.h>
 #include <math.h>
 #include <string.h>
+#define true  1
+#define false 0
+
+
+typedef unsigned char bool;
 
 typedef struct {
     double re;
@@ -195,24 +200,101 @@ int parse_complex(const char *str, complex *out) {
     return 0;
 }
 
-// TODO: Do after completing complex parser
-int read_qbits_init(const char *filename, int *n_qubits, complex **init_state) {
+int read_qbits_init(const char *filename, int *n_qubits, complex **out) {
     FILE *fp = fopen(filename, "r");
     if (!fp) {
         fprintf(stderr, "Errore: impossibile aprire il file %s\n", filename);
         return -1;
     }
+
+    char line[1024];
+    int qubits = 0;
+    bool done_qubits = false, done_init = false;
+
+    char *init_buf; // Buffer per il contenuto di #init (esclusi '[' e ']')
+
+    while (fgets(line, sizeof(line), fp)) {
+        if (!done_qubits && strncmp(line, "#qubits ", 8) == 0) {
+            char *num_start = line + 7;
+            
+            errno = 0;
+            char *endptr = NULL;
+            qubits = strtol(num_start, &endptr, 10); // strtol così da usare errno
+
+            if (qubits < 1 || qubits > 30 || errno != 0 || endptr == num_start || (*endptr != '\0' && *endptr != '\n')) {
+                fclose(fp);
+                return 1;
+            }
+            
+            done_qubits = true;
+        }
+
+        if (!done_init && strncmp(line, "#init ", 6) == 0) {
+            // Prendo input tra parentesi quadre
+            char *lbr = strchr(line, '[');
+            char *rbr = strchr(line, ']');
+            if (!lbr || !rbr || rbr < lbr) {
+                fclose(fp);
+                return 1;
+            }
+
+            size_t len = rbr - lbr - 1;
+
+            init_buf = malloc(len + 1); // Allocazione di memoria per il buffer
+            if (!init_buf) {
+                fclose(fp);
+                return 1;
+            }
+
+            strncpy(init_buf, lbr + 1, len); // Copia la parte tra parentesi quadre
+            init_buf[len] = '\0';
+            done_init = 1;
+        }
+
+        // Finisce prime di EOF in caso abbia trovato tutti i dati
+        if (done_qubits && done_init)
+            break;
+    }
+
+    fclose(fp);
+
+    // Controllo se ci sono tutti i dati
+    if (!done_qubits || !done_init)
+        return 1;
+
+    size_t dim = 1 << qubits; // Dimensione vettore 2^n
+    size_t idx = 0;
+
+    complex *vec = malloc(dim * sizeof(complex)); // Allocazione vettore finale
+
+    // Manda al parser tutto cio' che è tra le virgole, senza spazi iniziali
+    char *tkn = strtok(init_buf, ",");
+    while (tkn != NULL) {
+        while (*tkn == ' ') tkn++;
+        
+        if (parse_complex(tkn, &vec[idx])) {
+            free(vec);
+            free(init_buf);
+            return 1;
+        }
+
+        idx++;
+        tkn = strtok(NULL, ",");
+    }
+
+    free(init_buf);
+
+    if (idx != dim) {
+        free(vec);
+        return 1;
+    }
+
+    *out = vec;
+    *n_qubits = qubits;
+
     return 0;
 }
 
 int main(void) {
-    char a[] = "-2e1-i2e2";
-    complex c;
-    if (parse_complex(a, &c)) {
-        printf(":()\n");
-    } else {
-        complex_print(c);
-    }
-
     return 0;
 }
