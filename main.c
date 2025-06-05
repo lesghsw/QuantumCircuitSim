@@ -1,11 +1,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
-#include <math.h>
+#include <math.h> // Per fabs()
 #include <string.h>
+
 #define true  1
 #define false 0
-
 
 typedef unsigned char bool;
 
@@ -200,11 +200,12 @@ int parse_complex(const char *str, complex *out) {
     return 0;
 }
 
-int read_qbits_init(const char *filename, int *n_qubits, complex **out) {
+// malloc utilizzato internamente per "out", "Caller must free"
+int load_qbits_init(const char *filename, int *n_qubits, complex **out) {
     FILE *fp = fopen(filename, "r");
     if (!fp) {
         fprintf(stderr, "Errore: impossibile aprire il file %s\n", filename);
-        return -1;
+        return 1;
     }
 
     char line[1024];
@@ -295,6 +296,220 @@ int read_qbits_init(const char *filename, int *n_qubits, complex **out) {
     return 0;
 }
 
+int read_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, const int n_qubits) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        fprintf(stderr, "Errore: impossibile aprire il file %s\n", filename);
+        return 1;
+    }
+
+    int n_gates = 0;
+    gate *circuit = malloc(1 * sizeof(gate));
+    if (!circuit) {
+        fclose(fp);
+        return 1;
+    }
+    char *mat_buf, *row_buf;
+    size_t dim = 1 << n_qubits;
+    char line[2048];
+    char circ_in[2048];
+
+    while (fgets(line, sizeof(line), fp)) {
+        if (strncmp(line, "#define ", 8) == 0) {
+            gate t_gate;
+
+            char* gate_name;
+            char* name_start = line + 7;
+            while (*name_start == ' ') name_start++;
+            char *lbr = strchr(line, '[');
+            char *rbr = strchr(line, ']');
+            if (!lbr || !rbr || rbr < lbr) {
+                free_gates(circuit, n_gates);
+                fclose(fp);
+                return 1;
+            }
+            char *name_end = lbr - 1; // name_end parte da lbr - 1 e toglie spazi a destra
+            while (*name_end == ' ') name_end--;
+
+            int name_len = name_end - name_start + 1;
+            if (name_len > 7) { // Nome troppo lungo
+                free_gates(circuit, n_gates);
+                fclose(fp);
+                return 1;
+            }
+
+            gate_name = malloc(name_len + 1);
+            if (!gate_name) {
+                free_gates(circuit, n_gates);
+                fclose(fp);
+                return 1;
+            }
+
+            strncpy(gate_name, name_start, name_len); // Copia il nome
+            gate_name[name_len] = '\0';
+            t_gate.name = gate_name;
+
+            size_t len = rbr - lbr - 1;
+
+            mat_buf = malloc(len + 1); // Allocazione di memoria per il buffer
+            if (!mat_buf) {
+                free(gate_name);
+                free_gates(circuit, n_gates);
+                fclose(fp);
+                return 1;
+            }
+
+            strncpy(mat_buf, lbr + 1, len); // Copia la parte tra parentesi quadre
+            mat_buf[len] = '\0';
+
+            // Dopo aver acquisito i contenuti tra parentesi quadre
+            // si prendono le righe della matrice (Parentesi tonde)
+
+            // Alloca memoria per la matrice, nella quale verranno inseriti i numeri
+            // mentre verranno isolati da ogni riga
+            complex *t_mat = malloc(dim * dim * sizeof(complex));
+            if (!t_mat) {
+                free(mat_buf);
+                free(gate_name);
+                free_gates(circuit, n_gates);
+                fclose(fp);
+                return 1;
+            }
+            int mat_idx = 0; // Posizione all'interno della matrice finale
+
+            int row_idx = 0;
+            char *p_mat_buf = mat_buf; // Nuovo puntatore a mat_buf da poter manipolare
+            while (row_idx < dim) { // Limite "duro", dato che sappiamo quante righe aspettiamo
+
+                char *row_lbr = strchr(p_mat_buf, '(');
+                char *row_rbr = strchr(p_mat_buf, ')');
+                if (!row_lbr || !row_rbr || row_rbr < row_lbr) {
+                    free(t_mat);
+                    free(mat_buf);
+                    free(gate_name);
+                    free_gates(circuit, n_gates);
+                    fclose(fp);
+                    return 1;
+                }
+
+                size_t row_len = row_rbr - row_lbr - 1;
+
+                row_buf = malloc(row_len + 1); // Allocazione di memoria per il buffer
+                if (!row_buf) {
+                    free(t_mat);
+                    free(mat_buf);
+                    free(gate_name);
+                    free_gates(circuit, n_gates);
+                    fclose(fp);
+                    return 1;
+                }
+
+                strncpy(row_buf, row_lbr + 1, row_len); // Copia la parte tra parentesi tonde
+                row_buf[row_len] = '\0';
+
+                // Manda al parser tutto cio' che è tra le virgole, come per init
+                // mettendole in un array (t_mat) che verra' assegnato al gate come sua matrice
+
+                char *tkn = strtok(row_buf, ",");
+                while (tkn != NULL) {
+                    while (*tkn == ' ') tkn++;
+
+                    if (parse_complex(tkn, &t_mat[mat_idx])) {
+                        free(row_buf);
+                        free(t_mat);
+                        free(mat_buf);
+                        free(gate_name);
+                        free_gates(circuit, n_gates);
+                        fclose(fp);
+                        return 1;
+                    }
+                    
+                    mat_idx++;
+                    tkn = strtok(NULL, ",");
+                }
+
+                if (mat_idx % dim != 0) {
+                    free(row_buf);
+                    free(t_mat);
+                    free(mat_buf);
+                    free(gate_name);
+                    free_gates(circuit, n_gates);
+                    fclose(fp);
+                    return 1;
+                }
+
+
+                p_mat_buf += row_len + 2; // Sposto di row_len e aggiungo le parentedi tonde alla lunghezza
+                row_idx++;
+                free(row_buf);
+            }
+            t_gate.matrix = t_mat;
+            if (n_gates > 0) {
+                gate *new_circuit = realloc(circuit, (n_gates + 1) * sizeof(gate)); // Aumento memoria circuito di 1 gate alla volta.
+                if (!new_circuit) {
+                    free(t_mat);
+                    free(mat_buf);
+                    free(gate_name);
+                    free_gates(circuit, n_gates);
+                    fclose(fp);
+                    return 1;
+                }
+                circuit = new_circuit;
+            }
+            circuit[n_gates] = t_gate;
+            n_gates++;
+
+            free(mat_buf);
+            if (row_idx != dim) {
+                free_gates(circuit, n_gates);
+                fclose(fp);
+                return 1;
+            }
+        }
+        else if (strncmp(line, "#circ ", 6) == 0) {
+            char *circ_start = line + 5; // Puntatore da manipolare
+            while (*circ_start == ' ') circ_start++;
+
+            strncpy(circ_in, circ_start, strlen(circ_start));
+            circ_in[strlen(circ_start) - 1] = '\0';
+        }
+    }
+
+    fclose(fp);
+
+    *n_gates_out = n_gates;
+
+    // Gate nell'ordine giusto
+    int idx_tkn = 0;
+    int idx_gate;
+    gate tmp;
+    char *tkn_gate = strtok(circ_in, " "); // Prendo i gate uno alla volta dall'input e li cerco nel circuito caricato
+    while (tkn_gate != NULL) {
+        for (idx_gate = idx_tkn; idx_gate < n_gates; idx_gate++) {
+            if (strcmp(circuit[idx_gate].name, tkn_gate) == 0) {
+                // Trovato il gate corrispondente metto in ordine
+                if (idx_gate != idx_tkn) {
+                    tmp      = circuit[idx_tkn];
+                    circuit[idx_tkn] = circuit[idx_gate];
+                    circuit[idx_gate] = tmp;
+                }
+                break;
+            }
+        }
+        if (idx_gate == n_gates) { // Se non è stato trovato il gate tra quelli caricati errore.
+            free_gates(circuit, n_gates);
+            return 1;
+        }
+        tkn_gate = strtok(NULL, " ");
+        idx_tkn++;
+    }
+
+    *circuit_out = circuit; // out del circuito già sortato
+
+    return 0;
+}
+
 int main(void) {
+
     return 0;
 }
