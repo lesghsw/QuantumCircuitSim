@@ -4,7 +4,7 @@
 #include <math.h> // Per fabs()
 #include <string.h>
 
-// Definizione del tipo bool per codice più leggibile
+/// @brief Definizione del tipo bool per codice più leggibile
 typedef unsigned char bool;
 
 #ifndef true
@@ -434,6 +434,7 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
             char *name_end = name_start; // name_end parte da name_start e va verso destra fino al primo spazio
             while (*name_end != ' ') name_end++;
 
+            // int è abbastanza per contenere il risultato anche se dovrebbe essere un long
             int name_len = name_end - name_start;
             if (name_len > 15) { // Nome troppo lungo
                 fprintf(stderr, "Errore in %s, riga %d: Lunghezza massima nome gate 15 caratteri\n", filename, idx_line);
@@ -482,9 +483,9 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
                 fclose(fp);
                 return EXIT_FAILURE;
             }
-            int mat_idx = 0; // Posizione all'interno della matrice finale
+            size_t mat_idx = 0; // Posizione all'interno della matrice finale
 
-            int row_idx = 0;
+            size_t row_idx = 0;
             char *p_mat_buf = mat_buf; // Nuovo puntatore a mat_buf da poter manipolare
             while (row_idx < dim) { // Limite "duro", dato che sappiamo quante righe aspettiamo
 
@@ -666,13 +667,13 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < n_gates; i++) {
         matvec_mul(circuit[i].matrix, vec, t_vec, dim);
 
-        for (int j = 0; j < dim; j++)
+        for (size_t j = 0; j < dim; j++)
             vec[j] = t_vec[j];
     }
 
     // Stampa in stdout dello stato finale
     printf("[");
-    for (int i = 0; i < dim; i++) {
+    for (size_t i = 0; i < dim; i++) {
         complex_print(vec[i], 0x0);
         if (i != dim-1) printf(", ");
     }
