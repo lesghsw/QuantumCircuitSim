@@ -1,5 +1,22 @@
 ## Progetto di SOII, Università la sapienza.
 
+### Descrizione dei file:
+
+La cartella "include" contiene tutti gli header, mentre "src" tutti i file source.
+
+gate.h crea una struttura dati per salvare i gate, contiene anche una funzione per liberare 
+la memoria allocata nei circuiti (circuit = (gate*))
+
+complex.h crea una struttura dati per contenere numeri complessi
+e anche delle funzioni che permettono di
+aggiungere e moltiplicare i numeri complessi tra loro
+
+loader.h contiene le funzioni utili ha leggere e caricare i file in input.
+
+parser.h contiene le funzioni utili a convertire una string in numero complesso.
+
+utils.h contiene funzioni di utilità generiche del progetto.
+
 ### Come usare il programma:
 
 Da linea di comando eseguire il programma,
@@ -32,8 +49,7 @@ Mentre i file circuito hanno la seguente formattazione:
 
 **Nei file verranno ignorate tutte le righe che non iniziano con una direttiva.**
 
-**In caso di errore verrà stampato a schermo la posizione nel file**
-**(se è un errore nei file input) e la possibile causa.**
+**In caso di errore all'interno del file di input esso verrà segnalatospecificando posizione e ragione del problema.**
 
 Invece in caso di successo verrà stampato a schermo il risultato, ovvero
 lo stato finale del circuito.
@@ -58,14 +74,12 @@ i
 12
 1.23e2
 -1+i2
--1.02e1-i3.2e2
+-1.02e-1-i3.2e2
 ```
 
 -----------------
 
 ## makefile
 
-### make
-Con make viene compilato il programma, pronto per essere usato
-### make clean
-Make clean rimuove il file generato
+### Con make viene compilato il programma, pronto per essere usato
+### Make clean rimuove il file generato
