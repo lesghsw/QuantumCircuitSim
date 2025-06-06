@@ -4,18 +4,18 @@
 
 La cartella "include" contiene tutti gli header, mentre "src" tutti i file source.
 
-gate.h crea una struttura dati per salvare i gate, contiene anche una funzione per liberare 
+**gate.h** crea una struttura dati per salvare i gate, contiene anche una funzione per liberare 
 la memoria allocata nei circuiti (circuit = (gate*))
 
-complex.h crea una struttura dati per contenere numeri complessi
+**complex.h** crea una struttura dati per contenere numeri complessi
 e anche delle funzioni che permettono di
 aggiungere e moltiplicare i numeri complessi tra loro
 
-loader.h contiene le funzioni utili ha leggere e caricare i file in input.
+**loader.h** contiene le funzioni utili ha leggere e caricare i file in input.
 
-parser.h contiene le funzioni utili a convertire una string in numero complesso.
+**parser.h** contiene le funzioni utili a convertire una string in numero complesso.
 
-utils.h contiene funzioni di utilità generiche del progetto.
+**utils.h** contiene funzioni di utilità generiche del progetto.
 
 ### Come usare il programma:
 
