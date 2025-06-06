@@ -584,7 +584,7 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
                 return EXIT_FAILURE;
             }
         }
-        else if (strncmp(line, "#circ ", 6) == 0) {
+        else if (!done_circ && strncmp(line, "#circ ", 6) == 0) {
             char *circ_start = line + 5; // Puntatore da manipolare
             while (*circ_start == ' ') circ_start++;
 

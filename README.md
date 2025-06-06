@@ -39,6 +39,7 @@ Invece in caso di successo verrà stampato a schermo il risultato, ovvero
 lo stato finale del circuito.
 
 -----------------
+
 ## Regole di formattazione
 
 ### Ovunque si possa inserire un numero questo può essere reale, immaginario o complesso.
@@ -59,3 +60,12 @@ i
 -1+i2
 -1.02e1-i3.2e2
 ```
+
+-----------------
+
+## makefile
+
+### make
+Con make viene compilato il programma, pronto per essere usato
+### make clean
+Make clean rimuove il file generato
