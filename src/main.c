@@ -28,12 +28,19 @@ int main(int argc, char *argv[]) {
     gate *circuit;
 
     if(load_gates_circ(circ_file, &n_gates, &circuit, n_qubits)) {
+        perror("Allocazione memoria fallita");
         free(vec);
         return EXIT_FAILURE;
     }
 
     size_t dim = 1 << n_qubits;
-    complex *t_vec = malloc(dim * sizeof(complex)); // Array temp di supporto per la moltiplicazione
+    complex *t_vec = malloc(dim * 10000000000000 * sizeof(complex)); // Array temp di supporto per la moltiplicazione
+    if (!t_vec) {
+        perror("Allocazione memoria fallita");
+        free_circuit(circuit, n_gates);
+        free(vec);
+        return EXIT_FAILURE;
+    }
 
     // Moltiplico secondo l'ordine dato in input
     for (int i = 0; i < n_gates; i++) {
@@ -46,9 +53,9 @@ int main(int argc, char *argv[]) {
     // Stampa in stdout dello stato finale
     complex_vec_print(vec, dim);
 
+    free(t_vec);
     free_circuit(circuit, n_gates);
     free(vec);
-    free(t_vec);
     fflush(stdout);
 
     return EXIT_SUCCESS;

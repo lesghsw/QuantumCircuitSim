@@ -18,7 +18,7 @@ int load_qubits_init(const char *filename, int *n_qubits, complex **out_vec) {
 
     char *init_buf = NULL; // Buffer per il contenuto di #init (esclusi '[' e ']')
 
-    int idx_line = 0;
+    int idx_line = 1; // Indice linea, serve per gli errori
     while (fgets(line, sizeof(line), fp)) {
         if (!done_qubits && strncmp(line, "#qubits ", 8) == 0) {
             char *num_start = line + 7;
@@ -27,14 +27,14 @@ int load_qubits_init(const char *filename, int *n_qubits, complex **out_vec) {
             char *endptr = NULL;
             qubits = strtol(num_start, &endptr, 10); // strtol così da usare errno
 
-            if (qubits < 1 || qubits > 30) {
-                fprintf(stderr, "Errore in %s, riga %d: Numero qubits non valido (0<x<31)\n", filename, idx_line);
+            if (errno != 0 || endptr == num_start || (*endptr != '\0' && *endptr != '\n')) {
+                fprintf(stderr, "Errore in %s, riga %d: Parsing numero fallito (%s)\n", filename, idx_line, strerror(errno));
                 if (init_buf) free(init_buf);
                 fclose(fp);
                 return EXIT_FAILURE;
             }
-            if (errno != 0 || endptr == num_start || (*endptr != '\0' && *endptr != '\n')) {
-                fprintf(stderr, "Errore in %s, riga %d: Parsing numero fallito (%s)\n", filename, idx_line, strerror(errno));
+            if (qubits < 1 || qubits > 30) {
+                fprintf(stderr, "Errore in %s, riga %d: Numero qubits non valido (0<x<31)\n", filename, idx_line);
                 if (init_buf) free(init_buf);
                 fclose(fp);
                 return EXIT_FAILURE;
@@ -70,6 +70,8 @@ int load_qubits_init(const char *filename, int *n_qubits, complex **out_vec) {
         // Finisce prime di EOF in caso abbia trovato tutti i dati
         if (done_qubits && done_init)
             break;
+
+        idx_line++;
     }
 
     fclose(fp);
@@ -186,6 +188,17 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
             strncpy(gate_name, name_start, name_len); // Copia il nome
             gate_name[name_len] = '\0';
             t_gate.name = gate_name;
+
+            // Controllo se il nome e' gia' stato preso
+            for (int i = 0; i < n_gates; i++) {
+                if (strcmp(circuit[i].name, gate_name) == 0) {
+                    fprintf(stderr, "Errore in %s, riga %d: Esiste gia' un gate con lo stesso nome (%s)\n", filename, idx_line, gate_name);
+                    free(gate_name);
+                    free_circuit(circuit, n_gates);
+                    fclose(fp);
+                    return EXIT_FAILURE;
+                }
+            }
 
             size_t len = rbr - lbr - 1;
 
@@ -353,12 +366,18 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
             }
         }
         if (idx_gate == n_gates) { // Se non e' stato trovato il gate tra quelli caricati errore.
-            fprintf(stderr, "Errore in %s, riga %d: Gate inesistente (%s)\n", filename, idx_line, tkn_gate);
+            fprintf(stderr, "Errore in %s: Gate inesistente (%s)\n", filename, tkn_gate);
             free_circuit(circuit, n_gates);
             return EXIT_FAILURE;
         }
         tkn_gate = strtok(NULL, " ");
         idx_tkn++;
+    }
+
+    if (idx_tkn != n_gates) {
+        fprintf(stderr, "Errore in %s: Uno o piu' gate non sono specificati in #circ\n", filename);
+        free_circuit(circuit, n_gates);
+        return EXIT_FAILURE;
     }
 
     *circuit_out = circuit; // Out del circuito già sortato
