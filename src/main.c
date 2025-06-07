@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) {
     }
 
     size_t dim = 1 << n_qubits;
-    complex *t_vec = malloc(dim * 10000000000000 * sizeof(complex)); // Array temp di supporto per la moltiplicazione
+    complex *t_vec = malloc(dim * sizeof(complex)); // Array temp di supporto per la moltiplicazione
     if (!t_vec) {
         perror("Allocazione memoria fallita");
         free_circuit(circuit, n_gates);
