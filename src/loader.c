@@ -320,7 +320,7 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
             circuit[n_gates] = t_gate;
             n_gates++;
 
-            char *check_end_mat = strchr(p_mat_buf, '('); // Check if there were other rows (error)
+            char *check_end_mat = strchr(p_mat_buf, '('); // Controllo per righe in piu'
             free(mat_buf);
             if (check_end_mat) {
                 fprintf(stderr, "Errore in %s, riga %d: Il numero di righe dalla matrice e' superiore al necessario\n", filename, idx_line);
