@@ -320,7 +320,7 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
             circuit[n_gates] = t_gate;
             n_gates++;
 
-            char *check_end_mat = strchr(p_mat_buf, '('); // Controllo per righe in piu'
+            char *check_end_mat = strchr(p_mat_buf, '('); // Check if there were other rows (error)
             free(mat_buf);
             if (check_end_mat) {
                 fprintf(stderr, "Errore in %s, riga %d: Il numero di righe dalla matrice e' superiore al necessario\n", filename, idx_line);
@@ -332,9 +332,9 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
         else if (!done_circ && strncmp(line, "#circ ", 6) == 0) {
             char *circ_start = line + 5; // Puntatore da manipolare
             while (*circ_start == ' ') circ_start++;
-
+            
             strncpy(circ_in, circ_start, strlen(circ_start));
-            circ_in[strlen(circ_start) - 1] = '\0';
+            circ_in[strlen(circ_start)] = '\0';
             done_circ = 1;
         }
         idx_line++;
@@ -352,8 +352,10 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
     int idx_tkn = 0;
     int idx_gate;
     gate tmp;
+    printf("HEY: %s\n", circ_in);
     char *tkn_gate = strtok(circ_in, " "); // Prendo i gate uno alla volta dall'input e li cerco nel circuito caricato
     while (tkn_gate != NULL) {
+        printf("tkn_gate: %s\n", tkn_gate);
         for (idx_gate = idx_tkn; idx_gate < n_gates; idx_gate++) {
             if (strcmp(circuit[idx_gate].name, tkn_gate) == 0) {
                 // Trovato il gate corrispondente metto in ordine
