@@ -20,6 +20,7 @@ int main(int argc, char *argv[]) {
     complex *vec;
 
     if (load_qubits_init(init_file, &n_qubits, &vec)) {
+        fprintf(stderr, "Errore caricando il file %s\n", init_file);
         return EXIT_FAILURE;
     }
 
@@ -28,12 +29,12 @@ int main(int argc, char *argv[]) {
     gate *circuit;
 
     if(load_gates_circ(circ_file, &n_gates, &circuit, n_qubits)) {
-        perror("Allocazione memoria fallita");
+        fprintf(stderr, "Errore caricando il file %s\n", circ_file);
         free(vec);
         return EXIT_FAILURE;
     }
 
-    size_t dim = 1 << n_qubits;
+    size_t dim = 1UL << n_qubits;
     complex *t_vec = malloc(dim * sizeof(complex)); // Array temp di supporto per la moltiplicazione
     if (!t_vec) {
         perror("Allocazione memoria fallita");

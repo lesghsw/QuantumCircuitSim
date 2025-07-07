@@ -9,17 +9,17 @@
 
 int load_qubits_init(const char *filename, int *n_qubits, complex **out_vec) {
     FILE *fp = fopen(filename, "r");
-    int qubits = 0;
-    unsigned char done_qubits = 0, done_init = 0;
-    char *init_buf = NULL;
-    int idx_line = 1;
-    char *line = NULL;
-
     if (!fp) {
         perror(filename);
         return EXIT_FAILURE;
     }
 
+    int qubits = 0;
+    unsigned char done_qubits = 0, done_init = 0;
+    char *init_buf = NULL;
+    int idx_line = 1;
+
+    char *line;
     while ((line = read_line(fp)) != NULL) {
         if (!done_qubits && strncmp(line, "#qubits ", 8) == 0) {
             char *num_start = line + 7;
@@ -125,34 +125,29 @@ int load_qubits_init(const char *filename, int *n_qubits, complex **out_vec) {
 }
 
 int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, const int n_qubits) {
-    FILE *fp = NULL;
-    int ret = EXIT_FAILURE;
-    char *line = NULL;
-    char *block = NULL;
-    char *mat_buf = NULL;
-    char *row_buf = NULL;
-    gate *circuit = NULL;
-    char *circ_in = NULL;
-    int n_gates = 0;
-    int idx_line = 1;
-    char *gate_name = NULL;
-    size_t dim = 1UL << n_qubits;
-    
-    fp = fopen(filename, "r");
+    FILE *fp = fopen(filename, "r");
     if (!fp) {
         perror(filename);
-        goto cleanup;
+        return EXIT_FAILURE;
     }
 
+    int n_gates = 0;
+    gate *circuit = NULL;
+    char *circ_in = NULL;
+    int idx_line = 1;
+
+    char *line;
     while ((line = read_line(fp)) != NULL) {
         if (strncmp(line, "#define ", 8) == 0) {
-            block = string_append(NULL, line);
+            char *block = string_append(NULL, line);
             if (!block) {
                 perror("Allocazione memoria fallita");
-                goto cleanup;
+                free(line);
+                fclose(fp);
+                free_circuit(circuit, n_gates);
+                return EXIT_FAILURE;
             }
 
-            // Trova le parentesi quadre (Anche su più righe!)
             char *open_bracket = strchr(block, '[');
             while (!open_bracket) {
                 char *next_line = read_line(fp);
@@ -162,14 +157,21 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
                 free(next_line);
                 if (!block) {
                     perror("Allocazione memoria fallita");
-                    goto cleanup;
+                    free(line);
+                    fclose(fp);
+                    free_circuit(circuit, n_gates);
+                    return EXIT_FAILURE;
                 }
                 open_bracket = strchr(block, '[');
             }
 
             if (!open_bracket) {
                 fprintf(stderr, "Errore in %s, riga %d: Parentesi quadre mancanti\n", filename, idx_line);
-                goto cleanup;
+                free(block);
+                free(line);
+                fclose(fp);
+                free_circuit(circuit, n_gates);
+                return EXIT_FAILURE;
             }
 
             char *close_bracket = strchr(open_bracket, ']');
@@ -181,7 +183,10 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
                 free(next_line);
                 if (!block) {
                     perror("Allocazione memoria fallita");
-                    goto cleanup;
+                    free(line);
+                    fclose(fp);
+                    free_circuit(circuit, n_gates);
+                    return EXIT_FAILURE;
                 }
                 open_bracket = strchr(block, '[');
                 close_bracket = strchr(open_bracket, ']');
@@ -189,10 +194,14 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
 
             if (!close_bracket) {
                 fprintf(stderr, "Errore in %s, riga %d: Parentesi quadre non chiuse\n", filename, idx_line);
-                goto cleanup;
+                free(block);
+                free(line);
+                fclose(fp);
+                free_circuit(circuit, n_gates);
+                return EXIT_FAILURE;
             }
 
-            // Estrai il nome del gate
+            gate t_gate;
             char *name_start = block + 8;
             while (isspace((unsigned char)*name_start)) name_start++;
             char *name_end = name_start;
@@ -200,167 +209,216 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
             int name_len = name_end - name_start;
             if (name_len > 15) {
                 fprintf(stderr, "Errore in %s, riga %d: Nome gate troppo lungo\n", filename, idx_line);
-                goto cleanup;
+                free(block);
+                free(line);
+                fclose(fp);
+                free_circuit(circuit, n_gates);
+                return EXIT_FAILURE;
             }
 
-            gate_name = malloc(name_len + 1);
+            char *gate_name = malloc(name_len + 1);
             if (!gate_name) {
                 perror("Allocazione memoria fallita");
-                goto cleanup;
+                free(block);
+                free(line);
+                fclose(fp);
+                free_circuit(circuit, n_gates);
+                return EXIT_FAILURE;
             }
             strncpy(gate_name, name_start, name_len);
             gate_name[name_len] = '\0';
+            t_gate.name = gate_name;
 
-            // Controlla per duplicati nei gate
             for (int i = 0; i < n_gates; i++) {
                 if (strcmp(circuit[i].name, gate_name) == 0) {
                     fprintf(stderr, "Errore in %s, riga %d: Gate duplicato (%s)\n", filename, idx_line, gate_name);
-                    goto cleanup;
+                    free(gate_name);
+                    free(block);
+                    free(line);
+                    fclose(fp);
+                    free_circuit(circuit, n_gates);
+                    return EXIT_FAILURE;
                 }
             }
 
-            // Estrai la stringa contenente la matrice
             size_t len = close_bracket - open_bracket - 1;
-            mat_buf = malloc(len + 1);
+            char *mat_buf = malloc(len + 1);
             if (!mat_buf) {
                 perror("Allocazione memoria fallita");
-                goto cleanup;
+                free(gate_name);
+                free(block);
+                free(line);
+                fclose(fp);
+                free_circuit(circuit, n_gates);
+                return EXIT_FAILURE;
             }
             strncpy(mat_buf, open_bracket + 1, len);
             mat_buf[len] = '\0';
-            
-            // Libera subito block
-            free(block);
-            block = NULL;
 
-            // Inizia il parsing della matrice
-            complex *t_mat = malloc(dim * dim * sizeof(complex));
+            size_t dim_size = 1 << n_qubits;
+            complex *t_mat = malloc(dim_size * dim_size * sizeof(complex));
             if (!t_mat) {
                 perror("Allocazione memoria fallita");
-                goto cleanup;
+                free(gate_name);
+                free(mat_buf);
+                free(block);
+                free(line);
+                fclose(fp);
+                free_circuit(circuit, n_gates);
+                return EXIT_FAILURE;
             }
 
             size_t mat_idx = 0;
             char *p_mat_buf = mat_buf;
-            for (size_t row_idx = 0; row_idx < dim; row_idx++) {
+            for (size_t row_idx = 0; row_idx < dim_size; row_idx++) {
                 char *row_lbr = strchr(p_mat_buf, '(');
                 char *row_rbr = strchr(p_mat_buf, ')');
                 if (!row_lbr || !row_rbr || row_rbr < row_lbr) {
-                    fprintf(stderr, "Errore in %s, riga %d: Parentesi tonde malformate\n", filename, idx_line);
+                    if (!row_lbr && !row_lbr) fprintf(stderr, "Errore in %s, riga %d: Non ci sono abbastanza righe nella matrice", filename, idx_line);
+                    else fprintf(stderr, "Errore in %s, riga %d: Parentesi tonde malformate\n", filename, idx_line);
                     free(t_mat);
-                    goto cleanup;
+                    free(gate_name);
+                    free(mat_buf);
+                    free(block);
+                    free(line);
+                    fclose(fp);
+                    free_circuit(circuit, n_gates);
+                    return EXIT_FAILURE;
                 }
 
                 size_t row_len = row_rbr - row_lbr - 1;
-                row_buf = malloc(row_len + 1);
+                char *row_buf = malloc(row_len + 1);
                 if (!row_buf) {
                     perror("Allocazione memoria fallita");
                     free(t_mat);
-                    goto cleanup;
+                    free(gate_name);
+                    free(mat_buf);
+                    free(block);
+                    free(line);
+                    fclose(fp);
+                    free_circuit(circuit, n_gates);
+                    return EXIT_FAILURE;
                 }
                 strncpy(row_buf, row_lbr + 1, row_len);
                 row_buf[row_len] = '\0';
 
                 char *tkn = strtok(row_buf, ",");
                 while (tkn) {
-                    trim_whitespace(tkn); // Il parser accetta solo input sanificato
+                    trim_whitespace(tkn);
                     if (parse_complex(tkn, &t_mat[mat_idx])) {
                         fprintf(stderr, "Errore in %s, riga %d: Parsing fallito (%s)\n", filename, idx_line, tkn);
                         free(row_buf);
                         free(t_mat);
-                        row_buf = NULL;
-                        goto cleanup;
+                        free(gate_name);
+                        free(mat_buf);
+                        free(block);
+                        free(line);
+                        fclose(fp);
+                        free_circuit(circuit, n_gates);
+                        return EXIT_FAILURE;
                     }
                     mat_idx++;
                     tkn = strtok(NULL, ",");
                 }
                 free(row_buf);
-                row_buf = NULL;
                 p_mat_buf = row_rbr + 1;
             }
-            
-            // Libera subito il buffer della matrice
-            free(mat_buf);
-            mat_buf = NULL;
-
-            // Crea nuovo gate
-            gate t_gate;
-            t_gate.name = gate_name;
             t_gate.matrix = t_mat;
-            gate_name = NULL;  // Trasferita la proprieta' a t_gate
 
-            // Aggiungi al circuito
             gate *new_circuit = realloc(circuit, (n_gates + 1) * sizeof(gate));
             if (!new_circuit) {
                 perror("Allocazione memoria fallita");
-                free(t_gate.name);
-                free(t_gate.matrix);
-                goto cleanup;
+                free(t_mat);
+                free(gate_name);
+                free(mat_buf);
+                free(block);
+                free(line);
+                fclose(fp);
+                free_circuit(circuit, n_gates);
+                return EXIT_FAILURE;
             }
             circuit = new_circuit;
             circuit[n_gates++] = t_gate;
-        }
-        else if (!circ_in && strncmp(line, "#circ ", 6) == 0) {
-            // Estrai stringa circuito
+            free(mat_buf);
+            free(block);
+        } else if (!circ_in && strncmp(line, "#circ ", 6) == 0) {
             char *circ_start = line + 5;
             while (isspace((unsigned char)*circ_start)) circ_start++;
+            char *newline = strchr(circ_start, '\n');
+            if (newline) *newline = '\0';
+            newline = strchr(circ_start, '\r');
+            if (newline) *newline = '\0';
             circ_in = strdup(circ_start);
             if (!circ_in) {
                 perror("Allocazione memoria fallita");
-                goto cleanup;
+                free(line);
+                fclose(fp);
+                free_circuit(circuit, n_gates);
+                return EXIT_FAILURE;
             }
         }
         free(line);
-        line = NULL;
         idx_line++;
     }
+    fclose(fp);
 
-    // Inizia validazione e costruzione del circuito finale
     if (!circ_in) {
         fprintf(stderr, "Errore in %s: Circuito mancante\n", filename);
-        goto cleanup;
+        free_circuit(circuit, n_gates);
+        return EXIT_FAILURE;
     }
 
-    // Estrae i nomi dei gate (tokens) e costruisce il circuito
+    // Tokenizza la riga del circuito
     int n_circ = 0;
     char **tokens = NULL;
-    gate *new_circuit = NULL;
     char *saveptr;
     char *token = strtok_r(circ_in, " ", &saveptr);
     while (token) {
         char **new_tokens = realloc(tokens, (n_circ + 1) * sizeof(char *));
         if (!new_tokens) {
             perror("Allocazione memoria fallita");
-            goto circuit_cleanup;
+            free(circ_in);
+            free_circuit(circuit, n_gates);
+            for (int i = 0; i < n_circ; i++) free(tokens[i]);
+            free(tokens);
+            return EXIT_FAILURE;
         }
         tokens = new_tokens;
         tokens[n_circ] = strdup(token);
         if (!tokens[n_circ]) {
             perror("Allocazione memoria fallita");
-            goto circuit_cleanup;
+            free(circ_in);
+            free_circuit(circuit, n_gates);
+            for (int i = 0; i < n_circ; i++) free(tokens[i]);
+            free(tokens);
+            return EXIT_FAILURE;
         }
         n_circ++;
         token = strtok_r(NULL, " ", &saveptr);
     }
+    free(circ_in);
 
-    // Costruzione effettiva
-    new_circuit = malloc(n_circ * sizeof(gate));
+    // Crea circuito
+    gate *new_circuit = malloc(n_circ * sizeof(gate));
     if (!new_circuit) {
         perror("Allocazione memoria fallita");
-        goto circuit_cleanup;
+        free_circuit(circuit, n_gates);
+        for (int i = 0; i < n_circ; i++) free(tokens[i]);
+        free(tokens);
+        return EXIT_FAILURE;
     }
-    memset(new_circuit, 0, n_circ * sizeof(gate)); // Inizializzo a 0
+    memset(new_circuit, 0, n_circ * sizeof(gate)); // Inizializza a NULL
 
-    size_t mat_size = dim * dim * sizeof(complex);
+    size_t mat_size = (1UL << n_qubits) * (1UL << n_qubits) * sizeof(complex);
     for (int i = 0; i < n_circ; i++) {
         int found = 0;
         for (int j = 0; j < n_gates; j++) {
             if (strcmp(circuit[j].name, tokens[i]) == 0) {
-                // Duplica gate name
+                // Duplica nome
                 new_circuit[i].name = strdup(circuit[j].name);
                 if (!new_circuit[i].name) {
                     perror("Allocazione memoria fallita");
-                    goto circuit_cleanup;
+                    goto cleanup_error;
                 }
 
                 // Duplica matrice
@@ -368,8 +426,7 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
                 if (!new_circuit[i].matrix) {
                     perror("Allocazione memoria fallita");
                     free(new_circuit[i].name);
-                    new_circuit[i].name = NULL;
-                    goto circuit_cleanup;
+                    goto cleanup_error;
                 }
                 memcpy(new_circuit[i].matrix, circuit[j].matrix, mat_size);
                 found = 1;
@@ -379,46 +436,27 @@ int load_gates_circ(const char *filename, int *n_gates_out, gate **circuit_out, 
 
         if (!found) {
             fprintf(stderr, "Errore in %s: Gate non definito (%s)\n", filename, tokens[i]);
-            goto circuit_cleanup;
+            goto cleanup_error;
         }
     }
 
-    // In caso di successo trasferisco la proprieta'
+    // Pulizia
+    for (int i = 0; i < n_circ; i++) free(tokens[i]);
+    free(tokens);
+    free_circuit(circuit, n_gates);
+
     *n_gates_out = n_circ;
     *circuit_out = new_circuit;
-    ret = EXIT_SUCCESS;
+    return EXIT_SUCCESS;
 
-// Pulizia specifica della parte sulla costruzione dei circuiti
-circuit_cleanup:
-    if (tokens) {
-        for (int i = 0; i < n_circ; i++) free(tokens[i]);
-        free(tokens);
+cleanup_error:
+    for (int i = 0; i < n_circ; i++) {
+        if (new_circuit[i].name) free(new_circuit[i].name);
+        if (new_circuit[i].matrix) free(new_circuit[i].matrix);
     }
-    if (ret != EXIT_SUCCESS && new_circuit) {
-        for (int i = 0; i < n_circ; i++) {
-            if (new_circuit[i].name) free(new_circuit[i].name);
-            if (new_circuit[i].matrix) free(new_circuit[i].matrix);
-        }
-        free(new_circuit);
-    }
-
-// Pulizia principale
-cleanup:
-    if (fp) fclose(fp);
-    if (line) free(line);
-    if (block) free(block);
-    if (mat_buf) free(mat_buf);
-    if (row_buf) free(row_buf);
-    if (circ_in) free(circ_in);
-    if (gate_name) free(gate_name);
-    
-    // Libera il circuito originale (Tutto ciò che serviva è stato duplicato)
-    if (circuit) {
-        for (int i = 0; i < n_gates; i++) {
-            if (circuit[i].name) free(circuit[i].name);
-            if (circuit[i].matrix) free(circuit[i].matrix);
-        }
-        free(circuit);
-    }
-    return ret;
+    free(new_circuit);
+    for (int i = 0; i < n_circ; i++) free(tokens[i]);
+    free(tokens);
+    free_circuit(circuit, n_gates);
+    return EXIT_FAILURE;
 }
